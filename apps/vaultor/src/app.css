@@ -1,0 +1,76 @@
+/* ── Design tokens ──────────────────────────────────────────── */
+:root {
+  --brand:       #cbc3e3;
+  --brand-mid:   #a897cc;
+  --brand-dark:  #9282bc;
+  --bg-a:        #f7f3ff;
+  --bg-b:        #ede8f5;
+  --card:        #ffffff;
+  --text:        #3d3557;
+  --muted:       #8c7faa;
+  --border:      #e4daf0;
+  --shadow:      rgba(162, 136, 210, 0.16);
+  --err:         #c96b8a;
+  --err-bg:      #fff0f5;
+  --err-border:  #f5c6d8;
+  --ok:          #5a9a78;
+  --pdf:         #d98bb0;
+  --pdf-h:       #c477a0;
+
+  /* Layout */
+  --sidebar-width:  64px;
+  --list-width:     260px;
+  --radius:         8px;
+  --radius-sm:      4px;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Fira Mono', monospace;
+}
+
+/* ── Reset ──────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #app {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg-a);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Utilities ──────────────────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--brand-dark);
+  outline-offset: 2px;
+}

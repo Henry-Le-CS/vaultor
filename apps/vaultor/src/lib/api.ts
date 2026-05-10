@@ -1,0 +1,202 @@
+/**
+ * Typed wrappers around Tauri's invoke() IPC channel.
+ */
+import { invoke } from '@tauri-apps/api/core';
+import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
+
+// ── Types ────────────────────────────────────────────────────
+
+export interface SessionStatus {
+  active: boolean;
+  expires_at_ms: number | null;
+}
+
+// ── Namespace types ──────────────────────────────────────────
+
+export interface Namespace {
+  id: string;
+  name: string;
+  created_at: number;
+  updated_at: number;
+}
+
+// ── Auth ────────────────────────────────────────────────────
+
+/** Trigger TouchID, retrieve encryption key, create 2-minute session. */
+export async function unlockVault(): Promise<SessionStatus> {
+  return invoke<SessionStatus>('unlock_vault');
+}
+
+/** Manually lock the vault (wipes in-memory session + key). */
+export async function lockVault(): Promise<void> {
+  return invoke<void>('lock_vault');
+}
+
+/** Get current session status without side effects. */
+export async function sessionStatus(): Promise<SessionStatus> {
+  return invoke<SessionStatus>('session_status');
+}
+
+// ── Namespaces ───────────────────────────────────────────────
+
+export async function listNamespaces(): Promise<Namespace[]> {
+  return invoke<Namespace[]>('list_namespaces');
+}
+
+export async function createNamespace(name: string): Promise<Namespace> {
+  return invoke<Namespace>('create_namespace', { name });
+}
+
+export async function renameNamespace(id: string, name: string): Promise<void> {
+  return invoke<void>('rename_namespace', { id, name });
+}
+
+export async function deleteNamespace(id: string): Promise<void> {
+  return invoke<void>('delete_namespace', { id });
+}
+
+// ── Secret types ─────────────────────────────────────────────
+
+export interface SecretMeta {
+  id: string;
+  namespace_id: string;
+  name: string;
+  kind: 'kv' | 'file';
+  is_draft: boolean;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface KvFieldInput {
+  title: string;
+  value: string;
+  hidden: boolean;
+}
+
+export interface KvFieldDecrypted {
+  id: string;
+  title: string;
+  value: string;
+  hidden: boolean;
+  sort_order: number;
+}
+
+// ── Secrets ──────────────────────────────────────────────────
+
+export async function listSecrets(namespaceId: string): Promise<SecretMeta[]> {
+  return invoke<SecretMeta[]>('list_secrets', { namespaceId });
+}
+
+export async function createKvSecret(
+  namespaceId: string,
+  name: string,
+  fields: KvFieldInput[],
+): Promise<SecretMeta> {
+  return invoke<SecretMeta>('create_kv_secret', {
+    input: { namespace_id: namespaceId, name, fields },
+  });
+}
+
+export async function getKvSecret(id: string): Promise<KvFieldDecrypted[]> {
+  return invoke<KvFieldDecrypted[]>('get_kv_secret', { id });
+}
+
+export async function updateKvSecret(
+  id: string,
+  name: string,
+  fields: KvFieldInput[],
+): Promise<void> {
+  return invoke<void>('update_kv_secret', { input: { id, name, fields } });
+}
+
+export async function deleteSecret(id: string): Promise<void> {
+  return invoke<void>('delete_secret', { id });
+}
+
+export async function saveKvDraft(
+  namespaceId: string,
+  name: string,
+  fields: KvFieldInput[],
+): Promise<SecretMeta> {
+  return invoke<SecretMeta>('save_kv_draft', {
+    input: { namespace_id: namespaceId, name, fields },
+  });
+}
+
+export async function commitDraft(id: string): Promise<void> {
+  return invoke<void>('commit_draft', { id });
+}
+
+export async function discardDraft(id: string): Promise<void> {
+  return invoke<void>('discard_draft', { id });
+}
+
+// ── File secrets ─────────────────────────────────────────────
+
+export interface FileSecretInfo {
+  filename: string;
+  size_bytes: number;
+  content_b64: string;
+}
+
+export async function createFileSecret(
+  namespaceId: string,
+  name: string,
+  filename: string,
+  contentB64: string,
+): Promise<SecretMeta> {
+  return invoke<SecretMeta>('create_file_secret', {
+    input: { namespace_id: namespaceId, name, filename, content_b64: contentB64 },
+  });
+}
+
+export async function getFileSecret(id: string): Promise<FileSecretInfo> {
+  return invoke<FileSecretInfo>('get_file_secret', { id });
+}
+
+export async function updateFileSecret(
+  id: string,
+  filename: string,
+  contentB64: string,
+): Promise<void> {
+  return invoke<void>('update_file_secret', { id, filename, contentB64 });
+}
+
+// ── Settings ─────────────────────────────────────────────────────────────────
+
+export type SessionExpiry = 'minutes_2' | 'minutes_5' | 'minutes_10' | 'until_quit';
+
+export interface AppSettings {
+  session_expiry: SessionExpiry;
+  db_path: string;
+}
+
+export async function getSettings(): Promise<AppSettings> {
+  return invoke<AppSettings>('get_settings');
+}
+
+export async function setSessionExpiry(expiry: SessionExpiry): Promise<void> {
+  return invoke<void>('set_session_expiry', { expiry });
+}
+
+export async function getStorageLocation(): Promise<string> {
+  return invoke<string>('get_storage_location');
+}
+
+/** Open a native folder picker.  Returns the chosen path or null if cancelled. */
+export async function pickFolder(): Promise<string | null> {
+  const result = await dialogOpen({ directory: true, multiple: false });
+  if (!result) return null;
+  return Array.isArray(result) ? result[0] : result;
+}
+
+/**
+ * Copy the vault DB to `newDir/vaultor.db`, verify integrity, update settings.
+ *
+ * @param force - if true, overwrite an existing `vaultor.db` at the destination.
+ * @returns the new path string on success.
+ * @throws `"destination_exists"` if destination has vaultor.db and force is false.
+ */
+export async function moveStorage(newDir: string, force = false): Promise<string> {
+  return invoke<string>('move_storage', { newDir, force });
+}
