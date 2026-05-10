@@ -1,0 +1,10 @@
+plans/
+.claude
+CLAUDE.md
+*.local
+node_modules/
+target/
+dist/
+.DS_Store
+.env
+.env.local
