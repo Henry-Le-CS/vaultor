@@ -10,12 +10,27 @@ use crate::features::settings::config::{AppSettings, SessionExpiry};
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 
+/// Git remote connection info sent to the frontend.
+#[derive(Debug, Serialize, Clone)]
+pub struct GitRemoteDto {
+    pub id: String,
+    pub url: String,
+    pub branch: String,
+    pub last_synced: Option<i64>,
+}
+
 /// Subset of AppSettings that is safe to send to the frontend.
 #[derive(Debug, Serialize)]
 pub struct AppSettingsDto {
     pub session_expiry: SessionExpiry,
     /// Currently resolved vault DB path (string for JS convenience).
     pub db_path: String,
+    /// Active git remote connection state, or `null` if in local mode.
+    pub git_remote: Option<GitRemoteDto>,
+    /// All connected git repositories.
+    pub git_remotes: Vec<GitRemoteDto>,
+    /// Whether the user has completed the onboarding tutorial.
+    pub tutorial_seen: bool,
 }
 
 // ── Phase 1 commands ─────────────────────────────────────────────────────────
@@ -28,9 +43,31 @@ pub fn get_settings(
 ) -> Result<AppSettingsDto, VaultError> {
     let s = settings.lock().unwrap();
     let db_path = db_path_state.lock().unwrap().to_string_lossy().into_owned();
+
+    let git_remotes: Vec<GitRemoteDto> = s
+        .git_remotes
+        .iter()
+        .map(|r| GitRemoteDto {
+            id: r.id.clone(),
+            url: r.url.clone(),
+            branch: r.branch.clone(),
+            last_synced: r.last_synced,
+        })
+        .collect();
+
+    let git_remote = s.active_git_remote().map(|r| GitRemoteDto {
+        id: r.id.clone(),
+        url: r.url.clone(),
+        branch: r.branch.clone(),
+        last_synced: r.last_synced,
+    });
+
     Ok(AppSettingsDto {
         session_expiry: s.session_expiry.clone(),
         db_path,
+        git_remote,
+        git_remotes,
+        tutorial_seen: s.tutorial_seen,
     })
 }
 
@@ -44,6 +81,18 @@ pub fn set_session_expiry(
     let config_dir = app.path().app_config_dir()?;
     let mut s = settings.lock().unwrap();
     s.session_expiry = expiry;
+    s.save(&config_dir).map_err(VaultError::Validation)
+}
+
+/// Mark the onboarding tutorial as seen.
+#[tauri::command]
+pub fn set_tutorial_seen(
+    app: AppHandle,
+    settings: State<'_, Arc<Mutex<AppSettings>>>,
+) -> Result<(), VaultError> {
+    let config_dir = app.path().app_config_dir()?;
+    let mut s = settings.lock().unwrap();
+    s.tutorial_seen = true;
     s.save(&config_dir).map_err(VaultError::Validation)
 }
 
@@ -133,18 +182,6 @@ pub async fn move_storage(
 /// Returns `true` if the result is "ok".
 fn integrity_check(path: &str) -> Result<bool, VaultError> {
     use std::path::Path;
-    // We use rusqlite if available, otherwise fall back to a simple open check.
-    // The project uses sqlx, not rusqlite, so we use sqlx's bundled SQLite.
-    // Opening and running a synchronous pragma via the raw sqlite3 C API
-    // through sqlx is awkward in a blocking context.  Instead we use the
-    // std::process approach with the sqlite3 CLI if present, or a direct
-    // file-header read as a lightweight validity check.
-    //
-    // Preferred: use sqlx in a separate async context — but since we're already
-    // on a spawn_blocking thread, we open a raw connection via sqlite3_sys
-    // indirectly through the bundled libsqlite3.
-    //
-    // Simplest correct approach: attempt to open the file and read page count.
     sqlite_integrity_check_via_file(Path::new(path))
 }
 

@@ -7,14 +7,14 @@
     renameNamespace,
     deleteNamespace,
   } from '../../api.js';
-  import SettingsModal from '../settings/SettingsModal.svelte';
   import ConfirmModal from '../shared/ConfirmModal.svelte';
 
-  interface Props { showLabels?: boolean; }
-  let { showLabels = false }: Props = $props();
-
-  // ── Settings modal ────────────────────────────────────────
-  let settingsOpen = $state(false);
+  interface Props {
+    showLabels?: boolean;
+    onOpenSettings: () => void;
+    onAfterMutation?: () => void;
+  }
+  let { showLabels = false, onOpenSettings, onAfterMutation = () => {} }: Props = $props();
 
   // ── Delete confirm ────────────────────────────────────────
   let deletingId = $state<string | null>(null);
@@ -88,6 +88,7 @@
       const ns = await createNamespace(trimmed);
       namespaces.update((list) => [...list, ns]);
       activeNamespaceId.set(ns.id);
+      void onAfterMutation();
     } catch (err) {
       console.error('create namespace failed', err);
     }
@@ -109,6 +110,7 @@
       namespaces.update((list) =>
         list.map((ns) => (ns.id === id ? { ...ns, name: trimmed } : ns)),
       );
+      void onAfterMutation();
     } catch (err) {
       console.error('rename failed', err);
     }
@@ -130,6 +132,7 @@
         const remaining = $namespaces.filter((n) => n.id !== id);
         activeNamespaceId.set(remaining[0]?.id ?? '');
       }
+      void onAfterMutation();
     } catch (err) {
       console.error('delete failed', err);
     }
@@ -143,7 +146,7 @@
       class="ns-gear"
       title="Settings"
       aria-label="Open settings"
-      onclick={() => (settingsOpen = true)}
+      onclick={onOpenSettings}
     >
       <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" stroke="currentColor" stroke-width="1.5"
@@ -306,8 +309,6 @@
     </div>
   {/if}
 {/if}
-
-<SettingsModal open={settingsOpen} onClose={() => (settingsOpen = false)} />
 
 {#if deletingId !== null && deletingNs}
   <ConfirmModal

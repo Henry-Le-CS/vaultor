@@ -3,6 +3,7 @@ use std::sync::Arc;
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use sqlx::SqlitePool;
 use tauri::State;
+use tokio::sync::Mutex;
 
 use crate::error::VaultError;
 use crate::features::auth::session::SessionStore;
@@ -31,7 +32,7 @@ pub struct FileSecretInfo {
 pub async fn create_file_secret(
     input: CreateFileInput,
     session: State<'_, Arc<SessionStore>>,
-    db: State<'_, SqlitePool>,
+    db: State<'_, Arc<Mutex<SqlitePool>>>,
 ) -> Result<crate::features::storage::secret::SecretMeta, VaultError> {
     let key = session.get_key()?;
     let key: [u8; 32] = key
@@ -51,9 +52,10 @@ pub async fn create_file_secret(
         ));
     }
 
-    let meta = secret::create(&db, &input.namespace_id, &name, "file", false).await?;
+    let pool = db.lock().await.clone();
+    let meta = secret::create(&pool, &input.namespace_id, &name, "file", false).await?;
     let (ct, nonce) = cipher::encrypt_bytes(&key, &meta.id, &content)?;
-    file_secrets::insert(&db, &meta.id, &input.filename, &ct, &nonce, content.len()).await?;
+    file_secrets::insert(&pool, &meta.id, &input.filename, &ct, &nonce, content.len()).await?;
 
     Ok(meta)
 }
@@ -63,14 +65,15 @@ pub async fn create_file_secret(
 pub async fn get_file_secret(
     id: String,
     session: State<'_, Arc<SessionStore>>,
-    db: State<'_, SqlitePool>,
+    db: State<'_, Arc<Mutex<SqlitePool>>>,
 ) -> Result<FileSecretInfo, VaultError> {
     let key = session.get_key()?;
     let key: [u8; 32] = key
         .try_into()
         .map_err(|_| VaultError::Crypto("invalid key length".to_string()))?;
 
-    let row = file_secrets::get_for_secret(&db, &id).await?;
+    let pool = db.lock().await.clone();
+    let row = file_secrets::get_for_secret(&pool, &id).await?;
     let plaintext = cipher::decrypt_bytes(&key, &id, &row.content_enc, &row.content_nonce)?;
 
     Ok(FileSecretInfo {
@@ -87,7 +90,7 @@ pub async fn update_file_secret(
     filename: String,
     content_b64: String,
     session: State<'_, Arc<SessionStore>>,
-    db: State<'_, SqlitePool>,
+    db: State<'_, Arc<Mutex<SqlitePool>>>,
 ) -> Result<(), VaultError> {
     let key = session.get_key()?;
     let key: [u8; 32] = key
@@ -100,6 +103,7 @@ pub async fn update_file_secret(
 
     file_secrets::validate_size(content.len())?;
 
+    let pool = db.lock().await.clone();
     let (ct, nonce) = cipher::encrypt_bytes(&key, &id, &content)?;
-    file_secrets::replace(&db, &id, &filename, &ct, &nonce, content.len()).await
+    file_secrets::replace(&pool, &id, &filename, &ct, &nonce, content.len()).await
 }

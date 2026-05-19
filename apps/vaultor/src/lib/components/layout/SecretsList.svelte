@@ -1,19 +1,30 @@
 <script lang="ts">
   import { activeNamespaceId, namespaces } from '../../stores/namespace.js';
   import { secrets } from '../../stores/secrets.js';
-  import { listSecrets, deleteSecret } from '../../api.js';
+  import { listSecrets, deleteSecret, type GitRemoteInfo } from '../../api.js';
   import ConfirmModal from '../shared/ConfirmModal.svelte';
+  import GitStorageBar from './GitStorageBar.svelte';
 
   interface Props {
     activeSecretId: string;
     onCreateNew: () => void;
     onSecretDeleted: (id: string) => void;
+    gitRemotes?: GitRemoteInfo[];
+    activeGitUrl?: string | null;
+    onOpenSettings?: () => void;
+    onGitSwitch?: (url: string) => Promise<void>;
+    onAfterMutation?: () => Promise<void>;
   }
 
   let {
     activeSecretId = $bindable(''),
     onCreateNew,
     onSecretDeleted,
+    gitRemotes = [],
+    activeGitUrl = null,
+    onOpenSettings = () => {},
+    onGitSwitch = async (_url: string) => {},
+    onAfterMutation = async () => {},
   }: Props = $props();
 
   let loading = $state(false);
@@ -60,6 +71,8 @@
         activeSecretId = '';
         onSecretDeleted(id);
       }
+      // Fire-and-forget: push the deletion to git if connected.
+      void onAfterMutation();
     } catch (err) {
       console.error('delete secret failed', err);
     }
@@ -67,6 +80,15 @@
 </script>
 
 <section class="secrets-list" aria-label="Secrets">
+  {#if gitRemotes.length > 0}
+    <GitStorageBar
+      remotes={gitRemotes}
+      activeUrl={activeGitUrl}
+      onSwitch={onGitSwitch}
+      {onOpenSettings}
+    />
+  {/if}
+
   <header class="list-header">
     <div class="list-title-group">
       {#if $activeNamespaceId}

@@ -68,6 +68,7 @@ export interface SecretMeta {
 }
 
 export interface KvFieldInput {
+  id?: string;
   title: string;
   value: string;
   hidden: boolean;
@@ -159,16 +160,29 @@ export async function updateFileSecret(
   filename: string,
   contentB64: string,
 ): Promise<void> {
-  return invoke<void>('update_file_secret', { id, filename, contentB64 });
+  return invoke<void>('update_file_secret', { id, filename, content_b64: contentB64 });
 }
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
 export type SessionExpiry = 'minutes_2' | 'minutes_5' | 'minutes_10' | 'until_quit';
 
+export interface GitRemoteInfo {
+  id: string;
+  url: string;
+  branch: string;
+  last_synced: number | null;
+}
+
 export interface AppSettings {
   session_expiry: SessionExpiry;
   db_path: string;
+  /** Active git remote, or null if in local SQLite mode. */
+  git_remote: GitRemoteInfo | null;
+  /** All configured git repositories. */
+  git_remotes: GitRemoteInfo[];
+  /** Whether the user has completed the onboarding tutorial. */
+  tutorial_seen: boolean;
 }
 
 export async function getSettings(): Promise<AppSettings> {
@@ -177,6 +191,11 @@ export async function getSettings(): Promise<AppSettings> {
 
 export async function setSessionExpiry(expiry: SessionExpiry): Promise<void> {
   return invoke<void>('set_session_expiry', { expiry });
+}
+
+/** Mark the onboarding tutorial as completed. */
+export async function setTutorialSeen(): Promise<void> {
+  return invoke<void>('set_tutorial_seen');
 }
 
 export async function getStorageLocation(): Promise<string> {
@@ -199,4 +218,65 @@ export async function pickFolder(): Promise<string | null> {
  */
 export async function moveStorage(newDir: string, force = false): Promise<string> {
   return invoke<string>('move_storage', { newDir, force });
+}
+
+// ── Git remote storage ────────────────────────────────────────────────────────
+
+export interface GitConnectionResult {
+  branches: string[];
+  default_branch: string;
+}
+
+export interface GitStatus {
+  connected: boolean;
+  url: string | null;
+  branch: string | null;
+  last_synced: number | null;
+}
+
+/** Test connectivity to a remote git repository and return available branches. */
+export async function testGitConnection(url: string): Promise<GitConnectionResult> {
+  return invoke<GitConnectionResult>('test_git_connection', { url });
+}
+
+/** Clone the remote, open an isolated git DB, and switch the active environment. */
+export async function connectGitRemote(url: string, branch: string): Promise<void> {
+  return invoke<void>('connect_git_remote', { url, branch });
+}
+
+/** Return the current git remote connection status from settings. */
+export async function getGitStatus(): Promise<GitStatus> {
+  return invoke<GitStatus>('get_git_status');
+}
+
+/** Switch the active git remote to a different repository by URL. */
+export async function switchGitRemote(url: string): Promise<void> {
+  return invoke<void>('switch_git_remote', { url });
+}
+
+/** Switch back to local SQLite mode (git remote stays in the configured list). */
+export async function disconnectGitRemote(): Promise<void> {
+  return invoke<void>('disconnect_git_remote');
+}
+
+export interface SyncResult {
+  namespaces_synced: number;
+  secrets_synced: number;
+  committed: boolean;
+  pushed: boolean;
+  pulled: boolean;
+}
+
+/** Run a full pull → merge → push sync cycle against the active git remote. */
+export async function syncGit(): Promise<SyncResult> {
+  return invoke<SyncResult>('sync_git');
+}
+
+export interface RemoveGitRemoteResult {
+  new_active_url: string | null;
+}
+
+/** Remove a configured git repository and delete its local clone. */
+export async function removeGitRemote(url: string): Promise<RemoveGitRemoteResult> {
+  return invoke<RemoveGitRemoteResult>('remove_git_remote', { url });
 }

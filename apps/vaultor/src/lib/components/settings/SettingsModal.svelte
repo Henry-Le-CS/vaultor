@@ -4,20 +4,50 @@
     setSessionExpiry,
     pickFolder,
     moveStorage,
+    removeGitRemote,
+    disconnectGitRemote,
+    switchGitRemote,
     type SessionExpiry,
+    type GitRemoteInfo,
   } from '../../api.js';
+
+  import GitConnectForm from './GitConnectForm.svelte';
 
   interface Props {
     open: boolean;
     onClose: () => void;
+    /** Called when the vault SQLite data was replaced (connect/switch/disconnect/remove). */
+    onVaultReplaced?: () => void;
   }
-  let { open, onClose }: Props = $props();
+  let { open, onClose, onVaultReplaced = () => {} }: Props = $props();
 
   // ── Settings state ───────────────────────────────────────────
   let sessionExpiry = $state<SessionExpiry>('minutes_2');
   let dbPath = $state('');
   let loading = $state(false);
   let error = $state('');
+
+  // ── Git remote state ─────────────────────────────────────────
+  let gitConnected = $state(false);
+  let gitUrl = $state('');
+  let gitBranch = $state('');
+  let gitLastSynced = $state<number | null>(null);
+  let gitRemotes = $state<GitRemoteInfo[]>([]);
+  let showAddForm = $state(false);
+
+  // ── Repo remove state ─────────────────────────────────────────
+  let confirmRemoveUrl = $state<string | null>(null);
+  let removing = $state(false);
+  let removeError = $state('');
+
+  // ── Disconnect state (active repo) ───────────────────────────
+  let confirmDisconnect = $state(false);
+  let disconnecting = $state(false);
+  let disconnectError = $state('');
+
+  // ── Switch-to-repo state (inactive repos) ─────────────────────
+  let switching = $state(false);
+  let switchError = $state('');
 
   // ── Storage move state ───────────────────────────────────────
   let newDir = $state('');
@@ -46,10 +76,100 @@
       const s = await getSettings();
       sessionExpiry = s.session_expiry;
       dbPath = s.db_path;
+      gitRemotes = s.git_remotes;
+      if (s.git_remote) {
+        gitConnected = true;
+        gitUrl = s.git_remote.url;
+        gitBranch = s.git_remote.branch;
+        gitLastSynced = s.git_remote.last_synced;
+      } else {
+        gitConnected = false;
+        gitUrl = '';
+        gitBranch = '';
+        gitLastSynced = null;
+      }
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
       loading = false;
+    }
+  }
+
+  function truncateUrl(u: string, max = 44): string {
+    return u.length > max ? u.slice(0, max) + '…' : u;
+  }
+
+  function formatLastSynced(ts: number | null): string {
+    if (ts === null) return 'Never synced';
+    const diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 5)    return 'Just now';
+    if (diff < 60)   return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  function resetGitUiState() {
+    confirmRemoveUrl = null;
+    confirmDisconnect = false;
+    disconnectError = '';
+    switchError = '';
+    removeError = '';
+  }
+
+  function handleConnected() {
+    showAddForm = false;
+    onVaultReplaced();
+    loadSettings();
+  }
+
+  function handleDisconnected() {
+    showAddForm = false;
+    resetGitUiState();
+    onVaultReplaced();
+    loadSettings();
+  }
+
+  async function handleSwitchToLocal() {
+    disconnecting = true;
+    disconnectError = '';
+    try {
+      await disconnectGitRemote();
+      confirmDisconnect = false;
+      handleDisconnected();
+    } catch (e: unknown) {
+      disconnectError = e instanceof Error ? e.message : String(e);
+      disconnecting = false;
+    }
+  }
+
+  async function handleSwitchToRepo(url: string) {
+    switching = true;
+    switchError = '';
+    resetGitUiState();
+    try {
+      await switchGitRemote(url);
+      onVaultReplaced();
+      await loadSettings();
+    } catch (e: unknown) {
+      switchError = e instanceof Error ? e.message : String(e);
+    } finally {
+      switching = false;
+    }
+  }
+
+  async function handleRemoveRepo(url: string) {
+    removing = true;
+    removeError = '';
+    try {
+      await removeGitRemote(url);
+      confirmRemoveUrl = null;
+      onVaultReplaced();
+      await loadSettings();
+    } catch (e: unknown) {
+      removeError = e instanceof Error ? e.message : String(e);
+    } finally {
+      removing = false;
     }
   }
 
@@ -199,6 +319,140 @@
           <p class="success-msg" role="status">
             Vault moved. Please restart Vaultor for the change to take effect.
           </p>
+        {/if}
+      </section>
+
+      <!-- ── Git Repositories section ─────────────────────── -->
+      <section class="settings-section">
+        <h3 class="section-title">Git Repositories</h3>
+
+        {#if gitRemotes.length > 0}
+          <div class="repo-list">
+            {#each gitRemotes as repo (repo.url)}
+              {@const isActive = gitConnected && repo.url === gitUrl}
+              <div class="repo-card" class:repo-card--active={isActive}>
+
+                <!-- Card header: URL + badges + remove button -->
+                <div class="repo-card-header">
+                  <div class="repo-card-meta">
+                    <span class="repo-card-url" title={repo.url}>{truncateUrl(repo.url)}</span>
+                    <div class="repo-card-badges">
+                      <span class="repo-branch-badge">{repo.branch}</span>
+                      {#if isActive}
+                        <span class="repo-active-badge">Active</span>
+                      {/if}
+                    </div>
+                  </div>
+
+                  <!-- Remove control -->
+                  {#if confirmRemoveUrl === repo.url}
+                    <div class="repo-confirm">
+                      <span class="repo-confirm-text">Remove?</span>
+                      <button
+                        class="danger-btn"
+                        onclick={() => handleRemoveRepo(repo.url)}
+                        disabled={removing}
+                      >
+                        {removing ? '…' : 'Remove'}
+                      </button>
+                      <button
+                        class="ghost-btn"
+                        onclick={() => { confirmRemoveUrl = null; removeError = ''; }}
+                        disabled={removing}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  {:else}
+                    <button
+                      class="remove-repo-btn"
+                      onclick={() => { confirmRemoveUrl = repo.url; removeError = ''; confirmDisconnect = false; }}
+                      title="Remove repository"
+                      aria-label="Remove repository"
+                    >
+                      <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <line x1="5" y1="5" x2="15" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="15" y1="5" x2="5" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                      </svg>
+                    </button>
+                  {/if}
+                </div>
+
+                <!-- Last synced info -->
+                <p class="repo-card-synced">{formatLastSynced(repo.last_synced)}</p>
+
+                <!-- Active repo: disconnect controls -->
+                {#if isActive}
+                  {#if disconnectError}
+                    <p class="repo-msg repo-msg--err" role="alert">{disconnectError}</p>
+                  {/if}
+                  <div class="repo-card-actions">
+                    {#if !confirmDisconnect}
+                      <button
+                        class="ghost-btn"
+                        onclick={() => { confirmDisconnect = true; disconnectError = ''; }}
+                        disabled={disconnecting}
+                      >
+                        Switch to Local…
+                      </button>
+                    {:else}
+                      <span class="repo-confirm-text">Switch to local SQLite?</span>
+                      <button class="danger-btn" onclick={handleSwitchToLocal} disabled={disconnecting}>
+                        {disconnecting ? 'Switching…' : 'Yes, switch'}
+                      </button>
+                      <button
+                        class="ghost-btn"
+                        onclick={() => { confirmDisconnect = false; disconnectError = ''; }}
+                        disabled={disconnecting}
+                      >
+                        Cancel
+                      </button>
+                    {/if}
+                  </div>
+
+                <!-- Inactive repo: switch-to controls -->
+                {:else}
+                  {#if switchError && switching === false}
+                    <p class="repo-msg repo-msg--err" role="alert">{switchError}</p>
+                  {/if}
+                  <div class="repo-card-actions">
+                    <button
+                      class="secondary-btn"
+                      onclick={() => handleSwitchToRepo(repo.url)}
+                      disabled={switching || removing}
+                    >
+                      {switching ? 'Switching…' : 'Switch to this'}
+                    </button>
+                  </div>
+                {/if}
+
+              </div>
+            {/each}
+          </div>
+
+          {#if removeError}
+            <p class="move-error" role="alert">{removeError}</p>
+          {/if}
+
+          {#if !showAddForm}
+            <button class="link-btn" onclick={() => (showAddForm = true)}>
+              + Add another repository…
+            </button>
+          {:else}
+            <div class="add-repo-section">
+              <div class="add-repo-header">
+                <span class="add-repo-title">Add repository</span>
+                <button class="ghost-btn" onclick={() => (showAddForm = false)}>Cancel</button>
+              </div>
+              <GitConnectForm onConnected={handleConnected} />
+            </div>
+          {/if}
+        {:else}
+          <div class="storage-mode">
+            <span class="mode-badge">Local SQLite</span>
+            <p class="mode-hint">Optionally switch to a git repository as your storage backend — your encrypted vault lives in the repo instead of locally.</p>
+          </div>
+          <GitConnectForm onConnected={handleConnected} />
         {/if}
       </section>
 
@@ -535,5 +789,194 @@
     font-size: 13px;
     color: var(--muted);
     text-align: center;
+  }
+
+  /* ── Add repo section ────────────────────────────────────── */
+  .add-repo-section {
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .add-repo-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .add-repo-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Repo list + cards ───────────────────────────────────── */
+  .repo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .repo-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--bg-b);
+  }
+
+  .repo-card--active {
+    border-color: var(--brand-dark);
+    background: color-mix(in srgb, var(--brand-dark) 6%, var(--bg-b));
+  }
+
+  .repo-card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .repo-card-meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .repo-card-url {
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .repo-card-badges {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .repo-branch-badge {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 99px;
+    border: 1px solid var(--border);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--muted);
+    background: var(--bg-a);
+    width: fit-content;
+  }
+
+  .repo-active-badge {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 99px;
+    border: 1px solid var(--brand-dark);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--brand-dark);
+    background: color-mix(in srgb, var(--brand-dark) 12%, var(--bg-b));
+    width: fit-content;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .repo-card-synced {
+    font-size: 11px;
+    color: var(--muted);
+    margin: 0;
+  }
+
+  .repo-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding-top: 2px;
+  }
+
+  .repo-confirm {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .repo-confirm-text {
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  .remove-repo-btn {
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    color: var(--muted);
+    transition: background 0.1s, color 0.1s;
+  }
+
+  .remove-repo-btn:hover {
+    background: var(--err-bg, #fee2e2);
+    color: var(--err);
+  }
+
+  .remove-repo-btn svg { width: 13px; height: 13px; }
+
+  .repo-msg {
+    font-size: 12px;
+    margin: 0;
+  }
+
+  .repo-msg--err { color: var(--err); }
+
+  /* ── Storage mode indicator ──────────────────────────────── */
+  .storage-mode {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .mode-badge {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 99px;
+    border: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    background: var(--bg-b);
+    width: fit-content;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .mode-hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin: 0;
+    line-height: 1.5;
   }
 </style>

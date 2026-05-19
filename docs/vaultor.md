@@ -150,19 +150,25 @@ Secret names are plaintext (visible without auth). All `*_enc` columns are AES-2
 - [x] Namespace CRUD (create, rename, delete with typed confirmation)
 - [x] Key-value and file secrets (create, read, delete)
 - [x] AES-256-GCM encryption for all secret values
+- [x] TouchID authentication via macOS LocalAuthentication
+- [x] Encryption key stored in macOS Keychain (`kSecAccessControlBiometryCurrentSet`)
 - [x] Settings modal — view/copy/move vault file location, change session expiry
 - [x] Native folder picker (tauri-plugin-dialog)
 - [x] Session persists settings across restarts (`settings.json` in app config dir)
+- [x] Git remote backup — encrypted push/pull to any private git repository
+- [x] Additive merge with field-level conflict resolution (`updated_at` wins)
+- [x] Git connection test and status panel (`GitSyncStatus`)
 
 ## Not Yet Implemented
 
 | Feature | Notes |
 |---|---|
-| TouchID / Keychain integration | Key currently derived at runtime; Keychain storage planned |
-| File secrets drag-and-drop + download | File kind stored/encrypted, no DnD UI yet |
+| File secrets drag-and-drop + download | File stored/encrypted; no DnD UI yet |
 | Encrypted draft persistence | Drafts live in memory only |
 | Resizable panels | Panel widths fixed |
-| GitHub / Git sync | Planned (settings Story B) |
+| Multi-device key transfer | Git sync works; decryption on a second device requires manual key export (not implemented) |
+| Clipboard auto-clear | Copied values persist in clipboard until manually cleared |
+| Background / automatic git sync | Sync is manual ("Sync Now" only) |
 
 ---
 

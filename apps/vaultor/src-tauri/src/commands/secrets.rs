@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use sqlx::SqlitePool;
 use tauri::State;
+use tokio::sync::Mutex;
 
 use crate::error::VaultError;
 use crate::features::auth::session::SessionStore;
@@ -33,9 +34,10 @@ pub struct UpdateKvSecretInput {
 #[tauri::command]
 pub async fn list_secrets(
     namespace_id: String,
-    db: State<'_, SqlitePool>,
+    db: State<'_, Arc<Mutex<SqlitePool>>>,
 ) -> Result<Vec<SecretMeta>, VaultError> {
-    secret::list_by_namespace(&db, &namespace_id).await
+    let pool = db.lock().await.clone();
+    secret::list_by_namespace(&pool, &namespace_id).await
 }
 
 /// Create a new key-value secret with encrypted fields.
@@ -43,7 +45,7 @@ pub async fn list_secrets(
 pub async fn create_kv_secret(
     input: CreateKvSecretInput,
     session: State<'_, Arc<SessionStore>>,
-    db: State<'_, SqlitePool>,
+    db: State<'_, Arc<Mutex<SqlitePool>>>,
 ) -> Result<SecretMeta, VaultError> {
     let key = session.get_key()?;
     let key: [u8; 32] = key
@@ -57,17 +59,16 @@ pub async fn create_kv_secret(
         ));
     }
 
-    // Create the secret row (not a draft)
-    let meta = secret::create(&db, &input.namespace_id, &name, "kv", false).await?;
+    let pool = db.lock().await.clone();
+    let meta = secret::create(&pool, &input.namespace_id, &name, "kv", false).await?;
 
-    // Encrypt each field
     let encrypted: Vec<(KvFieldInput, Vec<u8>, Vec<u8>)> = input
         .fields
         .into_iter()
         .map(|f| cipher::encrypt(&key, &meta.id, &f.value).map(|(ct, nonce)| (f, ct, nonce)))
         .collect::<Result<_, _>>()?;
 
-    kv_fields::insert_fields(&db, &meta.id, &encrypted).await?;
+    kv_fields::insert_fields(&pool, &meta.id, &encrypted).await?;
     Ok(meta)
 }
 
@@ -76,14 +77,15 @@ pub async fn create_kv_secret(
 pub async fn get_kv_secret(
     id: String,
     session: State<'_, Arc<SessionStore>>,
-    db: State<'_, SqlitePool>,
+    db: State<'_, Arc<Mutex<SqlitePool>>>,
 ) -> Result<Vec<KvFieldDecrypted>, VaultError> {
     let key = session.get_key()?;
     let key: [u8; 32] = key
         .try_into()
         .map_err(|_| VaultError::Crypto("invalid key length".to_string()))?;
 
-    let rows = kv_fields::list_for_secret(&db, &id).await?;
+    let pool = db.lock().await.clone();
+    let rows = kv_fields::list_for_secret(&pool, &id).await?;
 
     rows.into_iter()
         .map(|row| {
@@ -104,7 +106,7 @@ pub async fn get_kv_secret(
 pub async fn update_kv_secret(
     input: UpdateKvSecretInput,
     session: State<'_, Arc<SessionStore>>,
-    db: State<'_, SqlitePool>,
+    db: State<'_, Arc<Mutex<SqlitePool>>>,
 ) -> Result<(), VaultError> {
     let key = session.get_key()?;
     let key: [u8; 32] = key
@@ -118,7 +120,8 @@ pub async fn update_kv_secret(
         ));
     }
 
-    secret::rename(&db, &input.id, &name).await?;
+    let pool = db.lock().await.clone();
+    secret::rename(&pool, &input.id, &name).await?;
 
     let encrypted: Vec<(KvFieldInput, Vec<u8>, Vec<u8>)> = input
         .fields
@@ -126,13 +129,17 @@ pub async fn update_kv_secret(
         .map(|f| cipher::encrypt(&key, &input.id, &f.value).map(|(ct, nonce)| (f, ct, nonce)))
         .collect::<Result<_, _>>()?;
 
-    kv_fields::replace_fields(&db, &input.id, &encrypted).await
+    kv_fields::upsert_fields(&pool, &input.id, &encrypted).await
 }
 
 /// Delete a secret and all its associated data (CASCADE handles fields).
 #[tauri::command]
-pub async fn delete_secret(id: String, db: State<'_, SqlitePool>) -> Result<(), VaultError> {
-    secret::delete(&db, &id).await
+pub async fn delete_secret(
+    id: String,
+    db: State<'_, Arc<Mutex<SqlitePool>>>,
+) -> Result<(), VaultError> {
+    let pool = db.lock().await.clone();
+    secret::delete(&pool, &id).await
 }
 
 /// Save a draft KV secret (creates with is_draft=true or updates existing draft).
@@ -140,7 +147,7 @@ pub async fn delete_secret(id: String, db: State<'_, SqlitePool>) -> Result<(), 
 pub async fn save_kv_draft(
     input: CreateKvSecretInput,
     session: State<'_, Arc<SessionStore>>,
-    db: State<'_, SqlitePool>,
+    db: State<'_, Arc<Mutex<SqlitePool>>>,
 ) -> Result<SecretMeta, VaultError> {
     let key = session.get_key()?;
     let key: [u8; 32] = key
@@ -153,7 +160,8 @@ pub async fn save_kv_draft(
         input.name.trim().to_string()
     };
 
-    let meta = secret::create(&db, &input.namespace_id, &name, "kv", true).await?;
+    let pool = db.lock().await.clone();
+    let meta = secret::create(&pool, &input.namespace_id, &name, "kv", true).await?;
 
     let encrypted: Vec<(KvFieldInput, Vec<u8>, Vec<u8>)> = input
         .fields
@@ -161,18 +169,26 @@ pub async fn save_kv_draft(
         .map(|f| cipher::encrypt(&key, &meta.id, &f.value).map(|(ct, nonce)| (f, ct, nonce)))
         .collect::<Result<_, _>>()?;
 
-    kv_fields::insert_fields(&db, &meta.id, &encrypted).await?;
+    kv_fields::insert_fields(&pool, &meta.id, &encrypted).await?;
     Ok(meta)
 }
 
 /// Commit a draft secret (set is_draft=false).
 #[tauri::command]
-pub async fn commit_draft(id: String, db: State<'_, SqlitePool>) -> Result<(), VaultError> {
-    secret::set_draft(&db, &id, false).await
+pub async fn commit_draft(
+    id: String,
+    db: State<'_, Arc<Mutex<SqlitePool>>>,
+) -> Result<(), VaultError> {
+    let pool = db.lock().await.clone();
+    secret::set_draft(&pool, &id, false).await
 }
 
 /// Discard a draft secret (delete it entirely).
 #[tauri::command]
-pub async fn discard_draft(id: String, db: State<'_, SqlitePool>) -> Result<(), VaultError> {
-    secret::delete(&db, &id).await
+pub async fn discard_draft(
+    id: String,
+    db: State<'_, Arc<Mutex<SqlitePool>>>,
+) -> Result<(), VaultError> {
+    let pool = db.lock().await.clone();
+    secret::delete(&pool, &id).await
 }

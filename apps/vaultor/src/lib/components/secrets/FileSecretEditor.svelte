@@ -65,6 +65,8 @@
   function onTextChange(e: Event) {
     const val = (e.target as HTMLTextAreaElement).value;
     textContent = val;
+    // Auto-assign a filename when the user types content without browsing.
+    if (!filename && val.trim()) filename = 'content.txt';
     onFileChosen(filename, textToB64(val));
   }
 
@@ -194,7 +196,7 @@
     <button
       class="btn-save"
       onclick={onSave}
-      disabled={saving || !name.trim() || !filename.trim()}
+      disabled={saving || !name.trim() || (!filename.trim() && !textContent.trim())}
     >
       {saving ? 'Saving…' : 'Save'}
     </button>

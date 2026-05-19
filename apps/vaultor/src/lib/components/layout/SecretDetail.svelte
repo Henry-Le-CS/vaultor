@@ -23,9 +23,11 @@
     isCreatingNew: boolean;
     onSaved: (id: string) => void;
     onCancelled: () => void;
+    /** Called after any successful create/update to push the change to git. */
+    onAfterMutation?: () => Promise<void>;
   }
 
-  let { secretId, isCreatingNew, onSaved, onCancelled }: Props = $props();
+  let { secretId, isCreatingNew, onSaved, onCancelled, onAfterMutation = async () => {} }: Props = $props();
 
   // ── New secret type picker ────────────────────────────────
   let newKind = $state<'kv' | 'file' | null>(null);
@@ -143,6 +145,7 @@
     try {
       const meta = await createKvSecret($activeNamespaceId, newKvName, newKvFields);
       secrets.update((list) => [...list, meta]);
+      void onAfterMutation();
       onSaved(meta.id);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : String(err));
@@ -158,6 +161,7 @@
     try {
       const meta = await createFileSecret($activeNamespaceId, newFileName, fn, newFileB64);
       secrets.update((list) => [...list, meta]);
+      void onAfterMutation();
       onSaved(meta.id);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : String(err));
@@ -171,7 +175,7 @@
     if (!fieldsLoaded && !await ensureLoaded()) return;
     const meta = $secrets.find((s) => s.id === secretId);
     editName = meta?.name ?? '';
-    editFields = kvFields.map((f) => ({ title: f.title, value: f.value, hidden: f.hidden }));
+    editFields = kvFields.map((f) => ({ id: f.id, title: f.title, value: f.value, hidden: f.hidden }));
     editMode = true;
   }
 
@@ -182,6 +186,7 @@
       secrets.update((list) =>
         list.map((s) => (s.id === secretId ? { ...s, name: editName } : s)),
       );
+      void onAfterMutation();
       editMode = false;
       fieldsLoaded = false;
       kvFields = [];
@@ -205,6 +210,7 @@
     const fn = fileFilename || secretName || 'content.txt';
     try {
       await updateFileSecret(secretId, fn, fileB64);
+      void onAfterMutation();
       editMode = false;
       fieldsLoaded = false;
       fileB64 = '';
@@ -270,6 +276,7 @@
       secrets.update((list) =>
         list.map((s) => (s.id === secretId ? { ...s, is_draft: false } : s)),
       );
+      void onAfterMutation();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : String(err));
     } finally {
