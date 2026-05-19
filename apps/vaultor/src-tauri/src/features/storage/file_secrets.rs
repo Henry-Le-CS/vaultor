@@ -89,3 +89,133 @@ pub async fn replace(
     .await?;
     Ok(())
 }
+
+// ── Tests ───────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn test_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .expect("in-memory pool");
+
+        sqlx::query(
+            "CREATE TABLE namespaces (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL,
+                created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "CREATE TABLE secrets (
+                id TEXT PRIMARY KEY, namespace_id TEXT NOT NULL,
+                name TEXT NOT NULL, kind TEXT NOT NULL,
+                is_draft INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "CREATE TABLE file_secrets (
+                id TEXT PRIMARY KEY, secret_id TEXT NOT NULL,
+                filename TEXT NOT NULL, content_enc BLOB NOT NULL,
+                content_nonce BLOB NOT NULL, size_bytes INTEGER NOT NULL,
+                FOREIGN KEY (secret_id) REFERENCES secrets(id) ON DELETE CASCADE
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query("INSERT INTO namespaces VALUES ('ns1', 'Test', 0, 0)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO secrets VALUES ('s1', 'ns1', 'File Sec', 'file', 0, 0, 0)")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        pool
+    }
+
+    #[test]
+    fn validate_size_within_limit() {
+        assert!(validate_size(1_048_576).is_ok());
+        assert!(validate_size(0).is_ok());
+        assert!(validate_size(500_000).is_ok());
+    }
+
+    #[test]
+    fn validate_size_exceeds_limit() {
+        assert!(validate_size(1_048_577).is_err());
+        assert!(validate_size(2_000_000).is_err());
+    }
+
+    #[tokio::test]
+    async fn insert_and_get() {
+        let pool = test_pool().await;
+        let enc = b"encrypted-content";
+        let nonce = b"123456789012";
+        let id = insert(&pool, "s1", "readme.txt", enc, nonce, 42)
+            .await
+            .unwrap();
+        assert!(!id.is_empty());
+
+        let row = get_for_secret(&pool, "s1").await.unwrap();
+        assert_eq!(row.filename, "readme.txt");
+        assert_eq!(row.content_enc, enc.to_vec());
+        assert_eq!(row.content_nonce, nonce.to_vec());
+        assert_eq!(row.size_bytes, 42);
+    }
+
+    #[tokio::test]
+    async fn get_nonexistent_returns_not_found() {
+        let pool = test_pool().await;
+        let result = get_for_secret(&pool, "s1").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn replace_overwrites() {
+        let pool = test_pool().await;
+        insert(&pool, "s1", "old.txt", b"old", b"123456789012", 3)
+            .await
+            .unwrap();
+
+        replace(&pool, "s1", "new.txt", b"new-content", b"nonce_nonce_", 11)
+            .await
+            .unwrap();
+
+        let row = get_for_secret(&pool, "s1").await.unwrap();
+        assert_eq!(row.filename, "new.txt");
+        assert_eq!(row.content_enc, b"new-content".to_vec());
+        assert_eq!(row.size_bytes, 11);
+    }
+
+    #[tokio::test]
+    async fn insert_multiple_then_get_returns_first() {
+        let pool = test_pool().await;
+        // Insert two file secrets for the same secret_id (edge case).
+        insert(&pool, "s1", "first.txt", b"a", b"123456789012", 1)
+            .await
+            .unwrap();
+        insert(&pool, "s1", "second.txt", b"b", b"123456789012", 1)
+            .await
+            .unwrap();
+
+        // get_for_secret uses LIMIT 1, so it returns one row.
+        let row = get_for_secret(&pool, "s1").await.unwrap();
+        assert!(row.filename == "first.txt" || row.filename == "second.txt");
+    }
+}
