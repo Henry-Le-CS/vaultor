@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Build & Test
+    runs-on: macos-14          # Apple Silicon runner
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/vaultor/src-tauri
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/vaultor/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd apps/vaultor && npm ci
+
+      - name: Build frontend
+        run: cd apps/vaultor && npm run build
+
+      - name: cargo fmt
+        run: cd apps/vaultor/src-tauri && cargo fmt --check
+
+      - name: cargo clippy
+        run: cd apps/vaultor/src-tauri && cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: cargo test
+        run: cd apps/vaultor/src-tauri && cargo test
+
+      - name: Integration tests
+        run: cd apps/vaultor/src-tauri && cargo test --test '*'
