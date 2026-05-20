@@ -16,7 +16,7 @@ int vaultor_touchid_prompt(const char *reason_cstr) {
             ? [NSString stringWithUTF8String:reason_cstr]
             : @"Unlock Vaultor";
 
-        BOOL canEval = [ctx canEvaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics
+        BOOL canEval = [ctx canEvaluatePolicy:LAPolicyDeviceOwnerAuthentication
                                         error:&error];
         if (!canEval) {
             return 0;
@@ -25,7 +25,7 @@ int vaultor_touchid_prompt(const char *reason_cstr) {
         dispatch_semaphore_t sem = dispatch_semaphore_create(0);
         __block BOOL result = NO;
 
-        [ctx evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics
+        [ctx evaluatePolicy:LAPolicyDeviceOwnerAuthentication
             localizedReason:reason
                       reply:^(BOOL success, NSError *__unused err) {
             result = success;
