@@ -230,6 +230,8 @@
       await clearCacheData();
       clearSuccess = true;
       confirmClear = false;
+      // DB pool was swapped back to local — refresh the main view.
+      onVaultReplaced();
       // Reload settings to reflect the reset state.
       await loadSettings();
     } catch (e: unknown) {
@@ -350,7 +352,7 @@
         <!-- Clear cache data -->
         <div class="clear-storage">
           {#if clearSuccess}
-            <p class="success-msg" role="status">Cache data has been cleared. Restart Vaultor to apply.</p>
+            <p class="success-msg" role="status">Cache data has been cleared.</p>
           {:else if !confirmClear}
             <button class="link-btn link-btn--danger" onclick={() => (confirmClear = true)}>
               Clear Cache Data…

@@ -178,14 +178,30 @@ pub async fn move_storage(
 
 /// Clear app cache data: reset settings.json to defaults and delete git repo
 /// clones.  This does NOT touch vault data (namespaces, secrets, files).
+///
+/// If the active DB was a git-backed database, the pool is swapped back to
+/// the local SQLite vault so the app remains functional without a restart.
 #[tauri::command]
 pub async fn clear_cache_data(
     app: AppHandle,
+    db: State<'_, Arc<tokio::sync::Mutex<sqlx::SqlitePool>>>,
     settings: State<'_, Arc<Mutex<AppSettings>>>,
+    db_path_state: State<'_, Arc<Mutex<PathBuf>>>,
     session: State<'_, Arc<crate::features::auth::session::SessionStore>>,
 ) -> Result<(), VaultError> {
     // Invalidate the current session (settings like expiry are being reset).
     session.invalidate();
+
+    // Switch the DB pool back to the local vault if it was on a git-backed DB.
+    let local_db_path = db_path_state.lock().unwrap().clone();
+    {
+        let new_pool = crate::features::storage::db::open(&local_db_path).await?;
+        let old_pool = {
+            let mut lock = db.lock().await;
+            std::mem::replace(&mut *lock, new_pool)
+        };
+        old_pool.close().await;
+    }
 
     // Reset settings to defaults and persist.
     let config_dir = app.path().app_config_dir()?;
