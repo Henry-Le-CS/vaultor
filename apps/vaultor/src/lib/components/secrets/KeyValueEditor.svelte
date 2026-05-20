@@ -72,8 +72,9 @@
           placeholder="Value"
           disabled={saving}
         />
-        <button class="generate-btn" onclick={() => openGenerator(i)} disabled={saving} title="Generate password" aria-label="Generate password">
-          <svg viewBox="0 0 16 16" fill="none"><path d="M8 2a4 4 0 0 0-4 4v2H3a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1h-1V6a4 4 0 0 0-4-4zm-2 4a2 2 0 1 1 4 0v2H6V6z" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+        <button class="generate-btn" onclick={() => openGenerator(i)} disabled={saving} title="Generate a strong password" aria-label="Generate password">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.3"/><circle cx="5.5" cy="5.5" r="1" fill="currentColor"/><circle cx="10.5" cy="5.5" r="1" fill="currentColor"/><circle cx="5.5" cy="10.5" r="1" fill="currentColor"/><circle cx="10.5" cy="10.5" r="1" fill="currentColor"/><circle cx="8" cy="8" r="1" fill="currentColor"/></svg>
+          Generate
         </button>
         <label class="hidden-toggle" title="Mask this field">
           <input type="checkbox" bind:checked={field.hidden} disabled={saving} />
@@ -155,22 +156,25 @@
   .hidden-toggle:hover .eye-icon svg { color: var(--brand-dark); }
 
   .generate-btn {
-    width: 28px;
     height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 4px;
+    padding: 0 8px;
     color: var(--muted);
     background: transparent;
-    border: none;
+    border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     flex-shrink: 0;
     cursor: pointer;
-    transition: color 0.1s, background 0.1s;
+    font-size: 11px;
+    white-space: nowrap;
+    transition: color 0.1s, background 0.1s, border-color 0.1s;
   }
-  .generate-btn:hover { color: var(--brand-dark); background: var(--bg-b); }
+  .generate-btn:hover { color: var(--brand-dark); background: var(--bg-b); border-color: var(--brand-dark); }
   .generate-btn:disabled { opacity: 0.5; cursor: default; }
-  .generate-btn svg { width: 14px; height: 14px; }
+  .generate-btn svg { width: 13px; height: 13px; flex-shrink: 0; }
 
   .remove-btn {
     width: 28px;

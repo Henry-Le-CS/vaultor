@@ -163,6 +163,11 @@ export async function updateFileSecret(
   return invoke<void>('update_file_secret', { id, filename, content_b64: contentB64 });
 }
 
+/** Delete all namespaces, secrets, and files from the local vault database. */
+export async function clearLocalStorage(): Promise<void> {
+  return invoke<void>('clear_local_storage');
+}
+
 // ── Password generator ──────────────────────────────────────────────────────
 
 export interface PasswordOptions {
@@ -176,10 +181,10 @@ export interface PasswordOptions {
 export async function generatePassword(opts: PasswordOptions): Promise<string> {
   return invoke<string>('generate_password', {
     length: opts.length,
-    use_uppercase: opts.useUppercase,
-    use_lowercase: opts.useLowercase,
-    use_digits: opts.useDigits,
-    use_symbols: opts.useSymbols,
+    useUppercase: opts.useUppercase,
+    useLowercase: opts.useLowercase,
+    useDigits: opts.useDigits,
+    useSymbols: opts.useSymbols,
   });
 }
 
