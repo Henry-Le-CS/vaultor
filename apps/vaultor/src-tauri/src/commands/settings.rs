@@ -176,6 +176,23 @@ pub async fn move_storage(
     Ok(dest_str)
 }
 
+/// Delete all user data from the local vault database (namespaces, secrets,
+/// key-value fields, file secrets).  The empty schema is preserved — the app
+/// is ready to use immediately after this call.
+///
+/// This does NOT affect git-backed databases or app settings.
+#[tauri::command]
+pub async fn clear_local_storage(
+    db: State<'_, Arc<tokio::sync::Mutex<sqlx::SqlitePool>>>,
+    session: State<'_, Arc<crate::features::auth::session::SessionStore>>,
+) -> Result<(), VaultError> {
+    // Lock the session so no in-flight operations reference stale rows.
+    session.invalidate();
+
+    let pool = db.lock().await;
+    crate::features::storage::clear_all_data(&pool).await
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Open the SQLite file at `path` and run `PRAGMA integrity_check`.

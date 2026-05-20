@@ -95,6 +95,7 @@ pub fn run() {
             commands::settings::get_storage_location,
             commands::settings::pick_folder,
             commands::settings::move_storage,
+            commands::settings::clear_local_storage,
             // Namespaces
             commands::namespaces::list_namespaces,
             commands::namespaces::create_namespace,

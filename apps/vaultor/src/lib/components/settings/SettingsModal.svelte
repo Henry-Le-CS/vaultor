@@ -7,6 +7,7 @@
     removeGitRemote,
     disconnectGitRemote,
     switchGitRemote,
+    clearLocalStorage,
     type SessionExpiry,
     type GitRemoteInfo,
   } from '../../api.js';
@@ -49,6 +50,12 @@
   let switching = $state(false);
   let switchError = $state('');
 
+  // ── Clear storage state ──────────────────────────────────────
+  let confirmClear = $state(false);
+  let clearing = $state(false);
+  let clearError = $state('');
+  let clearSuccess = $state(false);
+
   // ── Storage move state ───────────────────────────────────────
   let newDir = $state('');
   let moveError = $state('');
@@ -66,6 +73,9 @@
       showMoveRow = false;
       newDir = '';
       confirmOverwrite = false;
+      confirmClear = false;
+      clearError = '';
+      clearSuccess = false;
     }
   });
 
@@ -213,6 +223,21 @@
     }
   }
 
+  async function handleClearStorage() {
+    clearing = true;
+    clearError = '';
+    try {
+      await clearLocalStorage();
+      clearSuccess = true;
+      confirmClear = false;
+      onVaultReplaced();
+    } catch (e: unknown) {
+      clearError = e instanceof Error ? e.message : String(e);
+    } finally {
+      clearing = false;
+    }
+  }
+
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') onClose();
   }
@@ -320,6 +345,32 @@
             Vault moved. Please restart Vaultor for the change to take effect.
           </p>
         {/if}
+
+        <!-- Clear vault data -->
+        <div class="clear-storage">
+          {#if clearSuccess}
+            <p class="success-msg" role="status">All vault data has been cleared.</p>
+          {:else if !confirmClear}
+            <button class="link-btn link-btn--danger" onclick={() => (confirmClear = true)}>
+              Clear all vault data…
+            </button>
+          {:else}
+            <div class="confirm-row">
+              <span class="confirm-warning">This will permanently delete all namespaces, secrets, and files. This cannot be undone.</span>
+            </div>
+            <div class="confirm-row">
+              <button class="danger-btn" onclick={handleClearStorage} disabled={clearing}>
+                {clearing ? 'Clearing…' : 'Yes, delete everything'}
+              </button>
+              <button class="ghost-btn" onclick={() => { confirmClear = false; clearError = ''; }} disabled={clearing}>
+                Cancel
+              </button>
+            </div>
+            {#if clearError}
+              <p class="move-error" role="alert">{clearError}</p>
+            {/if}
+          {/if}
+        </div>
       </section>
 
       <!-- ── Git Repositories section ─────────────────────── -->
@@ -664,6 +715,8 @@
   }
 
   .link-btn:hover { color: var(--brand-mid); }
+  .link-btn--danger { color: var(--err); text-decoration: none; }
+  .link-btn--danger:hover { color: var(--err); opacity: 0.8; }
 
   .primary-btn {
     height: 32px;
@@ -978,5 +1031,20 @@
     color: var(--muted);
     margin: 0;
     line-height: 1.5;
+  }
+
+  /* ── Clear storage ──────────────────────────────────────── */
+  .clear-storage {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+  }
+
+  .confirm-warning {
+    font-size: 12px;
+    color: var(--err);
+    line-height: 1.4;
   }
 </style>
