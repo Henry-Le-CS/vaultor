@@ -176,21 +176,33 @@ pub async fn move_storage(
     Ok(dest_str)
 }
 
-/// Delete all user data from the local vault database (namespaces, secrets,
-/// key-value fields, file secrets).  The empty schema is preserved — the app
-/// is ready to use immediately after this call.
-///
-/// This does NOT affect git-backed databases or app settings.
+/// Clear app cache data: reset settings.json to defaults and delete git repo
+/// clones.  This does NOT touch vault data (namespaces, secrets, files).
 #[tauri::command]
-pub async fn clear_local_storage(
-    db: State<'_, Arc<tokio::sync::Mutex<sqlx::SqlitePool>>>,
+pub async fn clear_cache_data(
+    app: AppHandle,
+    settings: State<'_, Arc<Mutex<AppSettings>>>,
     session: State<'_, Arc<crate::features::auth::session::SessionStore>>,
 ) -> Result<(), VaultError> {
-    // Lock the session so no in-flight operations reference stale rows.
+    // Invalidate the current session (settings like expiry are being reset).
     session.invalidate();
 
-    let pool = db.lock().await;
-    crate::features::storage::clear_all_data(&pool).await
+    // Reset settings to defaults and persist.
+    let config_dir = app.path().app_config_dir()?;
+    {
+        let mut s = settings.lock().unwrap();
+        *s = AppSettings::default();
+        s.save(&config_dir).map_err(VaultError::Validation)?;
+    }
+
+    // Delete git repo clones directory.
+    let data_dir = app.path().app_data_dir()?;
+    let git_repos_dir = data_dir.join("git-repos");
+    if git_repos_dir.exists() {
+        std::fs::remove_dir_all(&git_repos_dir).map_err(|e| VaultError::Io(e.to_string()))?;
+    }
+
+    Ok(())
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
