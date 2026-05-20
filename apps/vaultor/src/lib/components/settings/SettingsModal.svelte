@@ -7,7 +7,7 @@
     removeGitRemote,
     disconnectGitRemote,
     switchGitRemote,
-    clearLocalStorage,
+    clearCacheData,
     type SessionExpiry,
     type GitRemoteInfo,
   } from '../../api.js';
@@ -223,14 +223,17 @@
     }
   }
 
-  async function handleClearStorage() {
+  async function handleClearCache() {
     clearing = true;
     clearError = '';
     try {
-      await clearLocalStorage();
+      await clearCacheData();
       clearSuccess = true;
       confirmClear = false;
+      // DB pool was swapped back to local — refresh the main view.
       onVaultReplaced();
+      // Reload settings to reflect the reset state.
+      await loadSettings();
     } catch (e: unknown) {
       clearError = e instanceof Error ? e.message : String(e);
     } finally {
@@ -346,21 +349,21 @@
           </p>
         {/if}
 
-        <!-- Clear vault data -->
+        <!-- Clear cache data -->
         <div class="clear-storage">
           {#if clearSuccess}
-            <p class="success-msg" role="status">All vault data has been cleared.</p>
+            <p class="success-msg" role="status">Cache data has been cleared.</p>
           {:else if !confirmClear}
             <button class="link-btn link-btn--danger" onclick={() => (confirmClear = true)}>
-              Clear all vault data…
+              Clear Cache Data…
             </button>
           {:else}
             <div class="confirm-row">
-              <span class="confirm-warning">This will permanently delete all namespaces, secrets, and files. This cannot be undone.</span>
+              <span class="confirm-warning">This will reset app settings, remove saved git repository connections, and clear the tutorial flag. Your vault secrets are NOT affected.</span>
             </div>
             <div class="confirm-row">
-              <button class="danger-btn" onclick={handleClearStorage} disabled={clearing}>
-                {clearing ? 'Clearing…' : 'Yes, delete everything'}
+              <button class="danger-btn" onclick={handleClearCache} disabled={clearing}>
+                {clearing ? 'Clearing…' : 'Yes, clear cache'}
               </button>
               <button class="ghost-btn" onclick={() => { confirmClear = false; clearError = ''; }} disabled={clearing}>
                 Cancel

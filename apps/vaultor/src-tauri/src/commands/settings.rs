@@ -176,21 +176,49 @@ pub async fn move_storage(
     Ok(dest_str)
 }
 
-/// Delete all user data from the local vault database (namespaces, secrets,
-/// key-value fields, file secrets).  The empty schema is preserved — the app
-/// is ready to use immediately after this call.
+/// Clear app cache data: reset settings.json to defaults and delete git repo
+/// clones.  This does NOT touch vault data (namespaces, secrets, files).
 ///
-/// This does NOT affect git-backed databases or app settings.
+/// If the active DB was a git-backed database, the pool is swapped back to
+/// the local SQLite vault so the app remains functional without a restart.
 #[tauri::command]
-pub async fn clear_local_storage(
+pub async fn clear_cache_data(
+    app: AppHandle,
     db: State<'_, Arc<tokio::sync::Mutex<sqlx::SqlitePool>>>,
+    settings: State<'_, Arc<Mutex<AppSettings>>>,
+    db_path_state: State<'_, Arc<Mutex<PathBuf>>>,
     session: State<'_, Arc<crate::features::auth::session::SessionStore>>,
 ) -> Result<(), VaultError> {
-    // Lock the session so no in-flight operations reference stale rows.
+    // Invalidate the current session (settings like expiry are being reset).
     session.invalidate();
 
-    let pool = db.lock().await;
-    crate::features::storage::clear_all_data(&pool).await
+    // Switch the DB pool back to the local vault if it was on a git-backed DB.
+    let local_db_path = db_path_state.lock().unwrap().clone();
+    {
+        let new_pool = crate::features::storage::db::open(&local_db_path).await?;
+        let old_pool = {
+            let mut lock = db.lock().await;
+            std::mem::replace(&mut *lock, new_pool)
+        };
+        old_pool.close().await;
+    }
+
+    // Reset settings to defaults and persist.
+    let config_dir = app.path().app_config_dir()?;
+    {
+        let mut s = settings.lock().unwrap();
+        *s = AppSettings::default();
+        s.save(&config_dir).map_err(VaultError::Validation)?;
+    }
+
+    // Delete git repo clones directory.
+    let data_dir = app.path().app_data_dir()?;
+    let git_repos_dir = data_dir.join("git-repos");
+    if git_repos_dir.exists() {
+        std::fs::remove_dir_all(&git_repos_dir).map_err(|e| VaultError::Io(e.to_string()))?;
+    }
+
+    Ok(())
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

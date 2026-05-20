@@ -163,9 +163,9 @@ export async function updateFileSecret(
   return invoke<void>('update_file_secret', { id, filename, content_b64: contentB64 });
 }
 
-/** Delete all namespaces, secrets, and files from the local vault database. */
-export async function clearLocalStorage(): Promise<void> {
-  return invoke<void>('clear_local_storage');
+/** Clear app cache data (settings, git repo clones, tutorial flag). Does NOT delete vault secrets. */
+export async function clearCacheData(): Promise<void> {
+  return invoke<void>('clear_cache_data');
 }
 
 // ── Password generator ──────────────────────────────────────────────────────
