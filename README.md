@@ -1,6 +1,6 @@
 # Vaultor
 
-[![CI](https://github.com/HenryLeCS/vault/actions/workflows/ci.yml/badge.svg)](https://github.com/HenryLeCS/vault/actions/workflows/ci.yml)
+[![CI](https://github.com/Henry-Le-CS/vaultor/actions/workflows/ci.yml/badge.svg)](https://github.com/Henry-Le-CS/vaultor/actions/workflows/ci.yml)
 
 A private, offline password manager for macOS. Your secrets never leave your device unless you choose to back them up yourself.
 
@@ -47,7 +47,7 @@ That's it. No additional software needed to run Vaultor.
 ### Option A — One-line install (recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/HenryLeCS/vault/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Henry-Le-CS/vaultor/main/install.sh | bash
 ```
 
 This downloads the latest `.dmg` from GitHub Releases, installs Vaultor to `/Applications`, and removes the Gatekeeper quarantine flag.

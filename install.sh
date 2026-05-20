@@ -4,7 +4,7 @@ set -euo pipefail
 # ── Vaultor installer ────────────────────────────────────────────────────────
 # Downloads the latest Vaultor release DMG and installs to /Applications.
 
-REPO="HenryLeCS/vault"
+REPO="Henry-Le-CS/vaultor"
 APP_NAME="Vaultor"
 
 echo "Fetching latest release..."
