@@ -6,10 +6,15 @@ on:
       - 'v*.*.*'
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Release version (leave empty to use Cargo.toml version)'
+      bump:
+        description: 'Version bump type'
         required: false
-        type: string
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 permissions:
   contents: write
@@ -22,6 +27,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -37,6 +44,46 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: apps/vaultor/package-lock.json
+
+      - name: Bump version (manual dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        id: bump
+        run: |
+          CURRENT=$(grep '^version' apps/vaultor/src-tauri/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+          BUMP="${{ inputs.bump }}"
+          case "$BUMP" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "VERSION=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Bumping $CURRENT → $NEW_VERSION ($BUMP)"
+
+          # Update Cargo.toml
+          sed -i '' "s/^version = \"$CURRENT\"/version = \"$NEW_VERSION\"/" apps/vaultor/src-tauri/Cargo.toml
+
+          # Update tauri.conf.json
+          sed -i '' "s/\"version\": \"$CURRENT\"/\"version\": \"$NEW_VERSION\"/" apps/vaultor/src-tauri/tauri.conf.json
+
+          # Update package.json
+          sed -i '' "s/\"version\": \"$CURRENT\"/\"version\": \"$NEW_VERSION\"/" apps/vaultor/package.json
+
+      - name: Extract version (tag push)
+        if: github.event_name == 'push'
+        id: tag_version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set VERSION env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ steps.bump.outputs.VERSION }}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION=${{ steps.tag_version.outputs.VERSION }}" >> "$GITHUB_ENV"
+          fi
 
       - name: Install frontend dependencies
         run: cd apps/vaultor && npm ci
@@ -54,43 +101,35 @@ jobs:
       - name: Build Tauri app
         run: cd apps/vaultor && npm run tauri -- build
 
-      - name: Extract version
-        id: version
-        run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            echo "VERSION=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION=$(grep '^version' apps/vaultor/src-tauri/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-            echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
-          else
-            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Create tag (manual dispatch)
+      - name: Commit version bump & create tag (manual dispatch)
         if: github.event_name == 'workflow_dispatch'
         run: |
-          git tag "v${{ steps.version.outputs.VERSION }}"
-          git push origin "v${{ steps.version.outputs.VERSION }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add apps/vaultor/src-tauri/Cargo.toml apps/vaultor/src-tauri/Cargo.lock apps/vaultor/src-tauri/tauri.conf.json apps/vaultor/package.json
+          git commit -m "chore: bump version to $VERSION"
+          git tag "v$VERSION"
+          git push origin main --tags
 
       - name: Rename DMG
         run: |
           DMG_SRC=$(ls apps/vaultor/src-tauri/target/release/bundle/dmg/*.dmg 2>/dev/null | head -1)
           if [ -n "$DMG_SRC" ]; then
-            cp "$DMG_SRC" "Vaultor-${{ steps.version.outputs.VERSION }}-macos.dmg"
+            cp "$DMG_SRC" "Vaultor-${VERSION}-macos.dmg"
           fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.VERSION }}
-          name: Vaultor v${{ steps.version.outputs.VERSION }}
+          tag_name: v${{ env.VERSION }}
+          name: Vaultor v${{ env.VERSION }}
           body: |
-            ## Vaultor v${{ steps.version.outputs.VERSION }}
+            ## Vaultor v${{ env.VERSION }}
 
             ### Install
 
             **Option A — Download the DMG**
-            1. Download `Vaultor-${{ steps.version.outputs.VERSION }}-macos.dmg` below
+            1. Download `Vaultor-${{ env.VERSION }}-macos.dmg` below
             2. Open the DMG and drag Vaultor into Applications
             3. On first launch: right-click → Open → Open (unsigned app workaround)
 
@@ -103,7 +142,7 @@ jobs:
             - macOS 13 (Ventura) or later
             - Mac with TouchID
           files: |
-            Vaultor-${{ steps.version.outputs.VERSION }}-macos.dmg
+            Vaultor-${{ env.VERSION }}-macos.dmg
             apps/vaultor/src-tauri/target/release/bundle/macos/Vaultor.app
           draft: false
           prerelease: false
