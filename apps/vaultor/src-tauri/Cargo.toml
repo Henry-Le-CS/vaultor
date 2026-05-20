@@ -22,6 +22,7 @@ thiserror = "2"
 security-framework = "2"
 tokio = { version = "1", features = ["full"] }
 getrandom = "0.2"
+rand = "0.8"
 secrecy = { version = "0.8", features = ["bytes"] }
 zeroize = "1"
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "macros"] }

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { KvFieldInput } from '../../api.js';
+  import PasswordGenerator from './PasswordGenerator.svelte';
 
   interface Props {
     name: string;
@@ -11,12 +12,33 @@
 
   let { name = $bindable(''), fields = $bindable([]), saving, onSave, onCancel }: Props = $props();
 
+  let showGenerator = $state(false);
+  let activeFieldIndex = $state<number | null>(null);
+
   function addField() {
     fields = [...fields, { title: '', value: '', hidden: true }];
   }
 
   function removeField(i: number) {
     fields = fields.filter((_, idx) => idx !== i);
+  }
+
+  function openGenerator(i: number) {
+    activeFieldIndex = i;
+    showGenerator = true;
+  }
+
+  function selectPassword(password: string) {
+    if (activeFieldIndex !== null) {
+      fields[activeFieldIndex].value = password;
+    }
+    showGenerator = false;
+    activeFieldIndex = null;
+  }
+
+  function closeGenerator() {
+    showGenerator = false;
+    activeFieldIndex = null;
   }
 </script>
 
@@ -50,6 +72,9 @@
           placeholder="Value"
           disabled={saving}
         />
+        <button class="generate-btn" onclick={() => openGenerator(i)} disabled={saving} title="Generate password" aria-label="Generate password">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M8 2a4 4 0 0 0-4 4v2H3a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1h-1V6a4 4 0 0 0-4-4zm-2 4a2 2 0 1 1 4 0v2H6V6z" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+        </button>
         <label class="hidden-toggle" title="Mask this field">
           <input type="checkbox" bind:checked={field.hidden} disabled={saving} />
           <span class="eye-icon" aria-hidden="true">
@@ -81,6 +106,10 @@
     </button>
   </div>
 </div>
+
+{#if showGenerator}
+  <PasswordGenerator onSelect={selectPassword} onClose={closeGenerator} />
+{/if}
 
 <style>
   .kv-editor {
@@ -124,6 +153,24 @@
   .hidden-toggle input { display: none; }
   .eye-icon svg { width: 18px; height: 18px; color: var(--muted); }
   .hidden-toggle:hover .eye-icon svg { color: var(--brand-dark); }
+
+  .generate-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: color 0.1s, background 0.1s;
+  }
+  .generate-btn:hover { color: var(--brand-dark); background: var(--bg-b); }
+  .generate-btn:disabled { opacity: 0.5; cursor: default; }
+  .generate-btn svg { width: 14px; height: 14px; }
 
   .remove-btn {
     width: 28px;
