@@ -105,11 +105,23 @@ mod tests {
         // Run multiple times to reduce flake probability.
         for _ in 0..20 {
             let pw = generate_password(20, true, true, true, true).unwrap();
-            assert!(pw.chars().any(|c| c.is_ascii_uppercase()), "missing uppercase in: {pw}");
-            assert!(pw.chars().any(|c| c.is_ascii_lowercase()), "missing lowercase in: {pw}");
-            assert!(pw.chars().any(|c| c.is_ascii_digit()), "missing digit in: {pw}");
+            assert!(
+                pw.chars().any(|c| c.is_ascii_uppercase()),
+                "missing uppercase in: {pw}"
+            );
+            assert!(
+                pw.chars().any(|c| c.is_ascii_lowercase()),
+                "missing lowercase in: {pw}"
+            );
+            assert!(
+                pw.chars().any(|c| c.is_ascii_digit()),
+                "missing digit in: {pw}"
+            );
             let sym_set: Vec<char> = SYMBOLS.iter().map(|&b| b as char).collect();
-            assert!(pw.chars().any(|c| sym_set.contains(&c)), "missing symbol in: {pw}");
+            assert!(
+                pw.chars().any(|c| sym_set.contains(&c)),
+                "missing symbol in: {pw}"
+            );
         }
     }
 
