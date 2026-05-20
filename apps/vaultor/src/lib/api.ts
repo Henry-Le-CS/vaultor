@@ -163,6 +163,26 @@ export async function updateFileSecret(
   return invoke<void>('update_file_secret', { id, filename, content_b64: contentB64 });
 }
 
+// ── Password generator ──────────────────────────────────────────────────────
+
+export interface PasswordOptions {
+  length: number;
+  useUppercase: boolean;
+  useLowercase: boolean;
+  useDigits: boolean;
+  useSymbols: boolean;
+}
+
+export async function generatePassword(opts: PasswordOptions): Promise<string> {
+  return invoke<string>('generate_password', {
+    length: opts.length,
+    use_uppercase: opts.useUppercase,
+    use_lowercase: opts.useLowercase,
+    use_digits: opts.useDigits,
+    use_symbols: opts.useSymbols,
+  });
+}
+
 // ── Settings ─────────────────────────────────────────────────────────────────
 
 export type SessionExpiry = 'minutes_2' | 'minutes_5' | 'minutes_10' | 'until_quit';

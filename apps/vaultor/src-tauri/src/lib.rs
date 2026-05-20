@@ -100,6 +100,8 @@ pub fn run() {
             commands::namespaces::create_namespace,
             commands::namespaces::rename_namespace,
             commands::namespaces::delete_namespace,
+            // Password generator
+            commands::generate::generate_password,
             // Secrets
             commands::secrets::list_secrets,
             commands::secrets::create_kv_secret,
