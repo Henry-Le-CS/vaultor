@@ -1,4 +1,4 @@
-name: CI
+name: pr_ci_check
 
 on:
   push:
@@ -51,3 +51,12 @@ jobs:
 
       - name: Integration tests
         run: cd apps/vaultor/src-tauri && cargo test --test '*'
+
+      - name: Security tests
+        run: cd apps/vaultor/src-tauri && cargo test --test security_tests
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Security audit (dependency vulnerabilities)
+        run: cd apps/vaultor/src-tauri && cargo audit
