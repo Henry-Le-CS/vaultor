@@ -23,7 +23,7 @@ echo ""
 
 # ── Confirm ──────────────────────────────────────────────────────────────────
 
-read -rp "Are you sure you want to uninstall Vaultor and delete ALL vault data? (y/N) " answer
+read -rp "Are you sure you want to uninstall Vaultor and delete ALL vault data? (y/N) " answer < /dev/tty
 if [[ ! "$answer" =~ ^[Yy]$ ]]; then
   echo "Cancelled."
   exit 0
