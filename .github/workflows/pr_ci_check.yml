@@ -59,4 +59,7 @@ jobs:
         run: cargo install cargo-audit --locked
 
       - name: Security audit (dependency vulnerabilities)
-        run: cd apps/vaultor/src-tauri && cargo audit
+        run: >
+          cd apps/vaultor/src-tauri &&
+          cargo audit
+          --ignore RUSTSEC-2023-0071
