@@ -76,6 +76,22 @@ xattr -d com.apple.quarantine /Applications/Vaultor.app
 
 ---
 
+## Uninstalling
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Henry-Le-CS/vaultor/main/uninstall.sh | bash
+```
+
+This will prompt for confirmation, then remove:
+- `/Applications/Vaultor.app`
+- `~/Library/Application Support/com.vaultor.app/` (vault database, settings, git repo clones)
+- `~/Library/Logs/Vaultor/` (application logs)
+- The encryption key from your macOS Keychain
+
+> **Warning:** This permanently deletes all vault data. Back up your vault file first if you want to keep it.
+
+---
+
 ## Getting started
 
 When you first open Vaultor, an **onboarding tutorial** walks you through the basics — creating namespaces, adding secrets, copying values, and configuring backups. You can re-open the tutorial at any time by clicking the **?** button in the bottom-right corner.

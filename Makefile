@@ -3,7 +3,7 @@ APP_DIR     := apps/vaultor
 APP_BUNDLE  := $(APP_DIR)/src-tauri/target/release/bundle/macos/$(APP_NAME).app
 INSTALL_DIR := /Applications
 
-.PHONY: build install open clean dev
+.PHONY: build install uninstall open clean dev
 
 ## Build the .app bundle (production)
 build:
@@ -15,6 +15,10 @@ install: $(APP_BUNDLE)
 	@rm -rf "$(INSTALL_DIR)/$(APP_NAME).app"
 	@cp -r "$(APP_BUNDLE)" "$(INSTALL_DIR)/$(APP_NAME).app"
 	@echo "Done. Launch with: open $(INSTALL_DIR)/$(APP_NAME).app"
+
+## Uninstall Vaultor (interactive — prompts for confirmation)
+uninstall:
+	@bash uninstall.sh
 
 ## Build then install in one step
 build-install: build install
